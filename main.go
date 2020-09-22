@@ -1,13 +1,15 @@
 package main
 
 import (
-	"fmt"
+	"gorone/db"
+	"gorone/models"
 	"time"
 
 	"github.com/adjust/rmq"
 )
 
 func main() {
+	db.Init()
 	connection := rmq.OpenConnection("gorone redis", "tcp", "host.docker.internal:6379", 0)
 	taskQueue := connection.OpenQueue("calc")
 	taskQueue.SetPushQueue(taskQueue) // リトライ用
@@ -29,6 +31,10 @@ type Consumer struct {
 }
 
 func (consumer *Consumer) Consume(delivery rmq.Delivery) {
-	fmt.Println("%+v", delivery.Payload())
+	db := db.DbManager()
+	result := models.CalcResult{KeyName: delivery.Payload()}
+	db.FirstOrInit(&result, models.CalcResult{KeyName: result.KeyName})
+	result.Result = 100
+	db.Save(&result)
 	delivery.Ack()
 }
