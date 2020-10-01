@@ -1,12 +1,17 @@
 package main
 
 import (
+	"fmt"
 	"gorone/db"
 	"gorone/models"
 	"time"
 
 	"github.com/adjust/rmq"
 )
+
+const MAX_COUNT = 10
+
+var nowCount = 0
 
 func main() {
 	db.Init()
@@ -31,6 +36,11 @@ type Consumer struct {
 }
 
 func (consumer *Consumer) Consume(delivery rmq.Delivery) {
+	nowCount = nowCount + 1
+	if nowCount >= MAX_COUNT {
+		panic("over max count 10")
+	}
+	fmt.Println(delivery.Payload())
 	db := db.DbManager()
 	result := models.CalcResult{KeyName: delivery.Payload()}
 	db.FirstOrInit(&result, models.CalcResult{KeyName: result.KeyName})
