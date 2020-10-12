@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"gorone/db"
+	"gorone/lib/utils"
 	"gorone/models"
 	"time"
 
@@ -15,7 +16,15 @@ var nowCount = 0
 
 func main() {
 	db.Init()
+	req := models.FindRequest()
+	ip, err := utils.GetPublicIP()
+	if err != nil {
+		panic("ipが取得できませんでした")
+	}
+	models.NewAssignment(req.ID, ip)
+	panic(1)
 	connection := rmq.OpenConnection("gorone redis", "tcp", "host.docker.internal:6379", 0)
+	// tag : = models.GetRedis()
 	taskQueue := connection.OpenQueue("calc")
 	taskQueue.SetPushQueue(taskQueue) // リトライ用
 	c := rmq.NewCleaner(connection)
