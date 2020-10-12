@@ -22,10 +22,8 @@ func main() {
 		panic("ipが取得できませんでした")
 	}
 	models.NewAssignment(req.ID, ip)
-	panic(1)
 	connection := rmq.OpenConnection("gorone redis", "tcp", "host.docker.internal:6379", 0)
-	// tag : = models.GetRedis()
-	taskQueue := connection.OpenQueue("calc")
+	taskQueue := connection.OpenQueue(req.RedisTagName)
 	taskQueue.SetPushQueue(taskQueue) // リトライ用
 	c := rmq.NewCleaner(connection)
 
