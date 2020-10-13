@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/json"
 	"fmt"
 	"gorone/db"
 	"time"
@@ -22,16 +23,15 @@ type Request struct {
 
 // FindRequest workerが足りないRequestを一つ取得
 func FindRequest() *Request {
+	fmt.Println("未完了のリクエストを取得中")
 	requests := GetUnCompletedRequests()
 	for _, r := range requests {
-		fmt.Printf("id:%s c:%s d:%s\n", r.ID, r.DesiredCount, len(r.Assignments))
-		r.Assignments[0].Terminate()
+		fmt.Printf("RequestID: %v, DesiredCount: %v, NowWorkerNum: %v\n", r.ID, r.DesiredCount, len(r.Assignments))
 		if r.DesiredCount > len(r.Assignments) {
-			// r.Done()
 			return &r
 		}
 	}
-	// なかった場合はECSの実行数を適正にしたい
+	// TODO: なかった場合はECSの実行数を適正にしたい
 	return nil
 }
 
@@ -43,6 +43,24 @@ func GetUnCompletedRequests() []Request {
 		return nil
 	}
 	return requests
+}
+
+// IsDone 終了しているか確認
+func (r Request) IsDone() bool {
+	db := db.DbManager()
+	var count int64
+	db.Model(&CalcResult{}).Where("key_name IN ?", r.DecodedBody()).Count(&count)
+	return true
+}
+
+// DecodedBody bodyをJSONデコードしたものを返す
+func (r Request) DecodedBody() []string {
+	var data map[string][]string
+	err := json.Unmarshal(r.Body, &data)
+	if err != nil {
+		return []string{}
+	}
+	return data["values"]
 }
 
 // Done Requestが完了したとき

@@ -16,9 +16,9 @@ type Assignment struct {
 }
 
 // NewAssignment 紐付けの作成
-func NewAssignment(requestID uint, ip string) (*Assignment, error) {
+func NewAssignment(requestID int, ip string) (*Assignment, error) {
 
-	assignment := Assignment{RequestID: int(requestID), PublicIP: ip}
+	assignment := Assignment{RequestID: requestID, PublicIP: ip}
 	db := db.DbManager()
 	if err := db.Create(&assignment).Error; err != nil {
 		return nil, err

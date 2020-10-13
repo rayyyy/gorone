@@ -7,33 +7,50 @@ import (
 	"gorone/models"
 	"time"
 
-	"github.com/adjust/rmq"
+	"github.com/adjust/rmq/v3"
 )
 
-const MAX_COUNT = 10
+// MaxRetryCount リトライ回数
+// TODO: リトライ処理
+const MaxRetryCount = 5
 
-var nowCount = 0
+// 制限時間で強制終了されるようにしたほうが良いか 30分とかで
+// その場合は紐付けテーブルも30分で無効にするとか
 
 func main() {
-	db.Init()
+	// workerがどのリクエストを対応するか判断する処理
+	ip := setup()
 	req := models.FindRequest()
-	ip, err := utils.GetPublicIP()
-	if err != nil {
-		panic("ipが取得できませんでした")
+	if req == nil {
+		panic("Request Not Found")
+		// ECSのDesired Countを最適にしないといけない
 	}
-	models.NewAssignment(req.ID, ip)
-	connection := rmq.OpenConnection("gorone redis", "tcp", "host.docker.internal:6379", 0)
-	taskQueue := connection.OpenQueue(req.RedisTagName)
-	taskQueue.SetPushQueue(taskQueue) // リトライ用
-	c := rmq.NewCleaner(connection)
+	models.NewAssignment(int(req.ID), ip)
 
+	// redisコネクト
+	errorChannel := make(chan error)
+	connection, err := rmq.OpenConnection("gorone redis", "tcp", "host.docker.internal:6379", 0, errorChannel)
+	if err != nil {
+		panic(err)
+	}
+	taskQueue, err := connection.OpenQueue(req.RedisTagName)
+	if err != nil {
+		panic(err)
+	}
+
+	taskQueue.SetPushQueue(taskQueue) // リトライ用
 	taskQueue.StartConsuming(1, time.Second*1)
 	taskConsumer := &Consumer{}
-	taskQueue.AddConsumer("calc consumer", taskConsumer)
+	taskQueue.AddConsumer("consumer-"+ip, taskConsumer)
 
 	// taskQueue.ReturnAllRejected() // rejectをreadyに戻す
 
-	for _ = range time.Tick(time.Second) {
+	c := rmq.NewCleaner(connection)
+	for _ = range time.Tick(time.Minute) {
+		// TODO: リクエストの進行状況watchする終わってたらECS-1しを解除し、consuming stopする
+		if req.IsDone() {
+			taskQueue.StopConsuming()
+		}
 		c.Clean() // 定期的なゴミ掃除
 	}
 }
@@ -43,10 +60,6 @@ type Consumer struct {
 }
 
 func (consumer *Consumer) Consume(delivery rmq.Delivery) {
-	nowCount = nowCount + 1
-	if nowCount >= MAX_COUNT {
-		panic("over max count 10")
-	}
 	fmt.Println(delivery.Payload())
 	db := db.DbManager()
 	result := models.CalcResult{KeyName: delivery.Payload()}
@@ -54,4 +67,15 @@ func (consumer *Consumer) Consume(delivery rmq.Delivery) {
 	result.Result = 100
 	db.Save(&result)
 	delivery.Ack()
+}
+
+// init workerのIPアドレスを返す
+func setup() string {
+	db.Init()
+	ip, err := utils.GetPublicIP()
+	if err != nil {
+		panic("ipが取得できませんでした")
+	}
+	fmt.Printf("Worker PublicIP: %v\n", ip)
+	return ip
 }
